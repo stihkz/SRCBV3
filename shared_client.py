@@ -49,14 +49,14 @@ userbot = Client("4gbbot", api_id=API_ID, api_hash=API_HASH, session_string=STRI
 async def start_client():
     if not client.is_connected():
         await client.start(bot_token=BOT_TOKEN)
-        print("SpyLib started...")
+        print("Chalice started...")
     if STRING:
         try:
             await userbot.start()
-            print("Userbot started...")
+            print("Chalice user session started...")
         except Exception as e:
-            print(f"Hey honey!! check your premium string session, it may be invalid of expire {e}")
+            print(f"Chalice session error: {e}")
             sys.exit(1)
     await app.start()
-    print("Pyro App Started...")
+    print("Chalice bot started...")
     return client, app, userbot
