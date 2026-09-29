@@ -52,6 +52,16 @@ async def _compat_get_uclient(uid):
     return UB.get(uid) or Y or getattr(batch, "X", None)
 
 
+class _ChaliceProgressClient:
+    """Proxy the progress message edit so old Team SPY branding is replaced."""
+    def __init__(self, client):
+        self._client = client
+
+    async def edit_message_text(self, chat_id, message_id, text, *args, **kwargs):
+        text = text.replace("Powered by Team SPY", "Powered by Chalice")
+        return await self._client.edit_message_text(chat_id, message_id, text, *args, **kwargs)
+
+
 def install_batch_compat():
     """Install compatibility helpers before any plugin startup code can use them."""
     try:
@@ -59,6 +69,14 @@ def install_batch_compat():
         if not hasattr(batch, "get_uclient"):
             batch.get_uclient = _compat_get_uclient
             print("Installed batch.get_uclient compatibility handler.")
+
+        original_prog = getattr(batch, "prog", None)
+        if original_prog and not getattr(batch, "_chalice_prog_patched", False):
+            async def chalice_prog(c, t, C, h, m, st):
+                return await original_prog(c, t, _ChaliceProgressClient(C), h, m, st)
+            batch.prog = chalice_prog
+            batch._chalice_prog_patched = True
+            print("Installed Chalice progress branding handler.")
     except Exception as e:
         print(f"Could not initialize batch compatibility: {e}")
 
@@ -77,9 +95,12 @@ async def load_and_run_plugins():
         module = importlib.import_module(f"plugins.{plugin}")
 
         # Keep the compatibility guard in case a plugin reload/replaces batch.
-        if plugin == "batch" and not hasattr(module, "get_uclient"):
-            module.get_uclient = _compat_get_uclient
-            print("Re-installed batch.get_uclient compatibility handler.")
+        if plugin == "batch":
+            if not hasattr(module, "get_uclient"):
+                module.get_uclient = _compat_get_uclient
+                print("Re-installed batch.get_uclient compatibility handler.")
+            if not getattr(module, "_chalice_prog_patched", False):
+                install_batch_compat()
 
         if hasattr(module, f"run_{plugin}_plugin"):
             print(f"Running {plugin} plugin...")
