@@ -9,11 +9,7 @@ import os
 import sys
 
 async def _compat_get_uclient(uid):
-    """Compatibility helper for batch.py after /setbot was removed.
-
-    Prefer the user's logged-in session. If none exists, fall back to the
-    main/custom bot client so public downloads continue to work.
-    """
+    """Return a logged-in user client when available, otherwise a usable bot client."""
     from pyrogram import Client
     from config import API_ID, API_HASH
     from utils.func import get_user_data
@@ -33,8 +29,6 @@ async def _compat_get_uclient(uid):
         return cached
 
     user_data = await get_user_data(uid)
-    ubot = UB.get(uid)
-
     if user_data:
         encrypted = user_data.get("session_string")
         if encrypted:
@@ -55,33 +49,48 @@ async def _compat_get_uclient(uid):
             except Exception as e:
                 print(f"User client error for {uid}: {e}")
 
-    # No per-user login: use the existing bot client for public content.
-    return ubot or Y or getattr(batch, "X", None)
+    return UB.get(uid) or Y or getattr(batch, "X", None)
+
+
+def install_batch_compat():
+    """Install compatibility helpers before any plugin startup code can use them."""
+    try:
+        batch = importlib.import_module("plugins.batch")
+        if not hasattr(batch, "get_uclient"):
+            batch.get_uclient = _compat_get_uclient
+            print("Installed batch.get_uclient compatibility handler.")
+    except Exception as e:
+        print(f"Could not initialize batch compatibility: {e}")
+
 
 async def load_and_run_plugins():
     await start_client()
+
+    # batch.py expects get_uclient() in some command paths. Install it before
+    # loading/running the rest of the plugin set, not after the plugin loop.
+    install_batch_compat()
+
     plugin_dir = "plugins"
     plugins = [f[:-3] for f in os.listdir(plugin_dir) if f.endswith(".py") and f != "__init__.py"]
 
     for plugin in plugins:
         module = importlib.import_module(f"plugins.{plugin}")
 
-        # Older/custom batch.py versions call get_uclient(), while the current
-        # fork no longer defines it after removing the per-user /setbot flow.
-        # Install the compatibility function after batch.py has loaded so no
-        # command handler is changed or lost.
+        # Keep the compatibility guard in case a plugin reload/replaces batch.
         if plugin == "batch" and not hasattr(module, "get_uclient"):
             module.get_uclient = _compat_get_uclient
-            print("Installed batch.get_uclient compatibility handler.")
+            print("Re-installed batch.get_uclient compatibility handler.")
 
         if hasattr(module, f"run_{plugin}_plugin"):
             print(f"Running {plugin} plugin...")
             await getattr(module, f"run_{plugin}_plugin")()
 
+
 async def main():
     await load_and_run_plugins()
     while True:
         await asyncio.sleep(1)
+
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
