@@ -104,24 +104,24 @@ CONTACT_URL = "https://t.me/freebandslime"
 
 @app.on_message(filters.command("terms") & filters.private)
 async def terms(client, message):
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
+    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")], [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
     await message.reply_text(TERMS_TEXT, reply_markup=buttons)
 
 @app.on_message(filters.command("plan") & filters.private)
 async def plan(client, message):
-    # Keep /plan consistent with the current See Plans content.
     await send_plan_message(message)
 
 async def send_plan_message(message):
     plan_text = "• Week — **$8**\n• Month — **$25**\n• Lifetime — **$40** *(Terms & Conditions apply)*\n\n📥 **Download Limit**\nDownload up to **100,000 files** in a single batch command.\n\n🛑 **/batch Mode**\nGet access to an extra `/batch` mode with support for files up to **4GB**.\n\n⏳ Please wait for the process to automatically cancel or finish before starting another download or upload.\n\n📜 **Terms & Conditions**\nSend `/terms` or click **See Terms 👇** for the full details."
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
+    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")], [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
     await message.reply_text(plan_text, reply_markup=buttons)
 
 @app.on_callback_query(filters.regex("see_plan"))
 async def see_plan(client, callback_query):
+    plan_text = "• Week — **$8**\n• Month — **$25**\n• Lifetime — **$40** *(Terms & Conditions apply)*\n\n📥 **Download Limit**\nDownload up to **100,000 files** in a single batch command.\n\n🛑 **/batch Mode**\nGet access to an extra `/batch` mode with support for files up to **4GB**.\n\n⏳ Please wait for the process to automatically cancel or finish before starting another download or upload.\n\n📜 **Terms & Conditions**\nSend `/terms` or click **See Terms 👇** for the full details."
     await callback_query.message.edit_text(
-        "• Week — **$8**\n• Month — **$25**\n• Lifetime — **$40** *(Terms & Conditions apply)*\n\n📥 **Download Limit**\nDownload up to **100,000 files** in a single batch command.\n\n🛑 **/batch Mode**\nGet access to an extra `/batch` mode with support for files up to **4GB**.\n\n⏳ Please wait for the process to automatically cancel or finish before starting another download or upload.\n\n📜 **Terms & Conditions**\nSend `/terms` or click **See Terms 👇** for the full details.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)])
+        plan_text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")], [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
     )
     await callback_query.answer()
 
@@ -129,6 +129,6 @@ async def see_plan(client, callback_query):
 async def see_terms(client, callback_query):
     await callback_query.message.edit_text(
         TERMS_TEXT,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)])
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")], [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
     )
     await callback_query.answer()
