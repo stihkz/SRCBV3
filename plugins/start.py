@@ -8,6 +8,15 @@ from pyrogram.errors import UserNotParticipant
 from pyrogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from config import LOG_GROUP, OWNER_ID, FORCE_SUB
 
+WELCOME_TEXT = """👋 **Welcome to BandzVault!**
+
+📥 Save posts from channels/groups with forwarding disabled, or download videos & audio from YouTube, Instagram, and more.
+
+🔗 Send a public post link to get started. For private channels, use `/login`.
+
+💡 Use `/help` to see all commands."""
+WELCOME_IMAGE = "https://drive.google.com/uc?export=download&id=1nPt6Nn-G2F1tnLfsIEhIqihcjVEyXzu_"
+
 async def subscribe(app, message):
     if FORCE_SUB:
         try:
@@ -23,7 +32,23 @@ async def subscribe(app, message):
         except Exception as ggn:
             await message.reply_text(f"Something Went Wrong. Contact admins... with following message {ggn}")
             return 1 
-     
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    join = await subscribe(client, message)
+    if join == 1:
+        return
+
+    try:
+        await message.reply_photo(
+            photo=WELCOME_IMAGE,
+            caption=WELCOME_TEXT
+        )
+    except Exception as e:
+        # Fall back to text if Telegram cannot fetch the Google Drive image.
+        print(f"Start image failed: {e}")
+        await message.reply_text(WELCOME_TEXT)
+
 @app.on_message(filters.command("set"))
 async def set(_, message):
     if message.from_user.id not in OWNER_ID:
@@ -147,7 +172,7 @@ async def help(client, message):
  
 @app.on_callback_query(filters.regex(r"help_(prev|next)_(\d+)"))
 async def on_help_navigation(client, callback_query):
-    action, page_number = callback_query.data.split("_")[1], int(callback_query.data.split("_")[2])
+    action, page_number = callback_query.data.split("_")[1], int(callback_query.data.split("_")[2]) 
  
     if action == "prev":
         page_number -= 1
@@ -221,7 +246,7 @@ async def see_terms(client, callback_query):
         "> 📜 **Terms and Conditions** 📜\n\n"
         "✨ We are not responsible for user deeds, and we do not promote copyrighted content. If any user engages in such activities, it is solely their responsibility.\n"
         "✨ Upon purchase, we do not guarantee the uptime, downtime, or the validity of the plan. __Authorization and banning of users are at our discretion; we reserve the right to ban or authorize users at any time.__\n"
-        "✨ Payment to us **__does not guarantee__** authorization for the /batch command. All decisions regarding authorization are made at our discretion and mood.\n"
+        "✨ Payment to us **does not guarantee** authorization for the /batch command. All decisions regarding authorization are made at our discretion and mood.\n"
     )
      
     buttons = InlineKeyboardMarkup(
@@ -231,5 +256,4 @@ async def see_terms(client, callback_query):
         ]
     )
     await callback_query.message.edit_text(terms_text, reply_markup=buttons)
- 
- 
+     
