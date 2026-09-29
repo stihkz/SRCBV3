@@ -2,7 +2,7 @@
 # Licensed under the GNU General Public License v3.0.  
 # See LICENSE file in the repository root for full license text.
 
-import os, re, time, asyncio, json, asyncio 
+import os, re, time, asyncio, json
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import UserNotParticipant
@@ -77,22 +77,61 @@ ACTIVE_USERS = load_active_users()
 
 async def upd_dlg(c):
     try:
-        async for _ in c.get_dialogs(limit=100): pass
+        async for _ in c.get_dialogs(limit=200):
+            pass
         return True
     except Exception as e:
         print(f'Failed to update dialogs: {e}')
         return False
 
-# Fetch a batch message reliably. The old logic could leave emp[i] unset for
-# normal public channels, causing every message lookup to return None.
+async def _resolve_private_chat(u, i):
+    """Resolve a /c/ chat through the authorized user session.
+
+    Pyrogram can know that the account is a member of a channel while still
+    lacking a usable input peer in its local cache.  Always resolve the peer
+    with the user client before requesting the message.
+    """
+    raw = str(i).strip()
+    candidates = []
+    if raw.startswith('-100'):
+        candidates.append(int(raw))
+        base = raw[4:]
+        if base.isdigit():
+            candidates.append(int(f'-{base}'))
+    elif raw.lstrip('-').isdigit():
+        base = raw.lstrip('-')
+        candidates.extend([int(f'-100{base}'), int(f'-{base}')])
+    else:
+        candidates.append(raw)
+
+    last_error = None
+    for candidate in candidates:
+        try:
+            chat = await u.get_chat(candidate)
+            return chat
+        except Exception as e:
+            last_error = e
+
+    # Refresh the dialog/peer cache and retry once. This is important after a
+    # newly generated session string is used on a fresh Heroku worker.
+    await upd_dlg(u)
+    for candidate in candidates:
+        try:
+            chat = await u.get_chat(candidate)
+            return chat
+        except Exception as e:
+            last_error = e
+
+    raise last_error or ValueError(f"Could not resolve source chat {i}")
+
+# Fetch a batch message reliably using the authorized user session for private
+# chats. The message is re-fetched from that same session after peer resolution
+# so download_media() never receives a stale/bot-side Message object.
 async def get_msg(c, u, i, d, lt):
     try:
         if lt == 'public':
             chat = str(i).lstrip('@')
-            emp[chat] = True  # True means the user client must download it.
-
-            # First try the bot client. If it can see the message we can copy it
-            # directly without downloading it through the user session.
+            emp[chat] = True
             try:
                 xm = await c.get_messages(chat, d)
                 if xm and not getattr(xm, "empty", False):
@@ -102,67 +141,33 @@ async def get_msg(c, u, i, d, lt):
             except Exception as e:
                 print(f"Bot could not fetch public message @{chat}/{d}: {e}")
 
-            # Fall back to the authorized user client.
             if u:
                 try:
-                    xm = await u.get_messages(chat, d)
+                    chat_obj = await u.get_chat(chat)
+                    xm = await u.get_messages(chat_obj.id, d)
                     if xm and not getattr(xm, "empty", False):
                         emp[chat] = True
                         print(f"Public message fetched by user client: @{chat}/{d}")
                         return xm
                 except Exception as e:
                     print(f"User client could not fetch public message @{chat}/{d}: {e}")
-
-                # If the username lookup failed, refresh the user's dialogs and
-                # resolve the public chat to its numeric ID before retrying.
-                try:
-                    await u.join_chat(chat)
-                except Exception:
-                    pass
-                try:
-                    chat_obj = await u.get_chat(chat)
-                    xm = await u.get_messages(chat_obj.id, d)
-                    if xm and not getattr(xm, "empty", False):
-                        emp[chat] = True
-                        print(f"Public message fetched by resolved chat ID: {chat_obj.id}/{d}")
-                        return xm
-                except Exception as e:
-                    print(f"Resolved public lookup failed @{chat}/{d}: {e}")
-
             return None
 
-        if u:
-            await upd_dlg(u)
+        if not u:
+            print(f"No authorized user client available for private chat {i}")
+            return None
 
-            value = str(i)
-            if value.startswith('-100'):
-                chat_id_100 = value
-                chat_id_dash = f"-{value[4:]}"
-            elif value.lstrip('-').isdigit():
-                base_id = value.lstrip('-')
-                chat_id_100 = f"-100{base_id}"
-                chat_id_dash = f"-{base_id}"
-            else:
-                chat_id_100 = value
-                chat_id_dash = value
-
-            for chat_id in (chat_id_100, chat_id_dash, value):
-                try:
-                    result = await u.get_messages(chat_id, d)
-                    if result and not getattr(result, "empty", False):
-                        return result
-                except Exception:
-                    pass
-
-            try:
-                await upd_dlg(u)
-                result = await u.get_messages(value, d)
-                if result and not getattr(result, "empty", False):
-                    return result
-            except Exception:
-                pass
-
-        return None
+        try:
+            chat_obj = await _resolve_private_chat(u, i)
+            xm = await u.get_messages(chat_obj.id, int(d))
+            if xm and not getattr(xm, "empty", False):
+                print(f"Private message resolved and fetched: chat={chat_obj.id}, message={d}")
+                return xm
+            print(f"Private message {d} was empty in chat {chat_obj.id}")
+            return None
+        except Exception as e:
+            print(f"Private peer/message resolution failed for {i}/{d}: {e}")
+            return None
     except Exception as e:
         print(f'Error fetching message: {e}')
         return None
@@ -251,20 +256,33 @@ async def process_msg(c, u, m, d, lt, uid, i):
                 rtmid = int(parts[1]) if len(parts) > 1 else None
             else:
                 tcid = int(cfg_chat)
-        
+
+        # For private links, force the message to come from the authorized
+        # user client immediately before downloading. This prevents
+        # PEER_ID_INVALID when a cached/stale Message object is used.
+        if lt == 'private' and u:
+            try:
+                chat_obj = await _resolve_private_chat(u, i)
+                fresh = await u.get_messages(chat_obj.id, int(d))
+                if fresh and not getattr(fresh, 'empty', False):
+                    m = fresh
+                    i = chat_obj.id
+                    print(f"Using fresh user-session message for download: chat={i}, message={d}")
+            except Exception as e:
+                print(f"Fresh private message resolution before download failed: {e}")
+
         if m.media:
             orig_text = m.caption.markdown if m.caption else ''
             proc_text = await process_text_with_rules(d, orig_text)
             user_cap = await get_user_data_key(d, 'caption', '')
             ft = f'{proc_text}\n\n{user_cap}' if proc_text and user_cap else user_cap if user_cap else proc_text
-            
+
             if lt == 'public' and not emp.get(str(i).lstrip('@'), True):
                 sent = await send_direct(c, m, tcid, ft, rtmid)
                 return 'Sent directly.' if sent else 'Failed.'
-            
+
             st = time.time()
             p = await c.send_message(d, 'Downloading...')
-
             c_name = f"{time.time()}"
             if m.video:
                 file_name = m.video.file_name
@@ -286,19 +304,26 @@ async def process_msg(c, u, m, d, lt, uid, i):
                 file_name = f"{time.time()}.jpg"
                 c_name = sanitize(file_name)
 
-            f = await u.download_media(m, file_name=c_name, progress=prog, progress_args=(c, d, p.id, st))
-            
+            # Always download through the authorized user client. If it still
+            # cannot resolve the peer, surface the actual error in the batch log.
+            try:
+                f = await u.download_media(m, file_name=c_name, progress=prog, progress_args=(c, d, p.id, st))
+            except Exception as e:
+                print(f"User-session download failed for chat={i}, message={d}: {type(e).__name__}: {e}")
+                await c.edit_message_text(d, p.id, f'Download failed: {str(e)[:80]}')
+                return f'Error: {str(e)[:80]}'
+
             if not f:
                 await c.edit_message_text(d, p.id, 'Failed.')
                 return 'Failed.'
-            
+
             await c.edit_message_text(d, p.id, 'Renaming...')
             if ((m.video and m.video.file_name) or (m.audio and m.audio.file_name) or (m.document and m.document.file_name)):
                 f = await rename_file(f, d, p)
-            
+
             fsize = os.path.getsize(f) / (1024 * 1024 * 1024)
             th = thumbnail(d)
-            
+
             if fsize > 2 and Y:
                 st = time.time()
                 await c.edit_message_text(d, p.id, 'File is larger than 2GB. Using alternative method...')
@@ -318,7 +343,7 @@ async def process_msg(c, u, m, d, lt, uid, i):
                 os.remove(f)
                 await c.delete_messages(d, p.id)
                 return 'Done (Large file).'
-            
+
             await c.edit_message_text(d, p.id, 'Uploading...')
             st = time.time()
             try:
@@ -355,7 +380,7 @@ async def process_msg(c, u, m, d, lt, uid, i):
             await c.send_message(tcid, text=m.text.markdown, reply_to_message_id=rtmid)
             return 'Sent.'
     except Exception as e:
-        return f'Error: {str(e)[:50]}'
+        return f'Error: {str(e)[:80]}'
 
 @X.on_message(filters.command(['batch', 'single']))
 async def process_cmd(c, m):
@@ -420,73 +445,46 @@ async def text_handler(c, m):
             await pt.edit('Add bot with /setbot first')
             Z.pop(uid, None)
             return
-        uc = await get_uclient(uid)
-        if not uc:
-            await pt.edit('Cannot proceed without user client.')
+        uclient = await get_uclient(uid)
+        msg = await get_msg(c, uclient, i, s, lt)
+        if not msg:
+            await pt.edit('Failed to fetch that message. Make sure your user session can access the source chat.')
             Z.pop(uid, None)
             return
-        if is_user_active(uid):
-            await pt.edit('Active task exists. Use /stop first.')
-            Z.pop(uid, None)
-            return
-        try:
-            msg = await get_msg(ubot, uc, i, s, lt)
-            if msg:
-                res = await process_msg(ubot, uc, msg, str(m.chat.id), lt, uid, i)
-                await pt.edit(f'1/1: {res}')
-            else:
-                await pt.edit('Message not found')
-        except Exception as e:
-            await pt.edit(f'Error: {str(e)[:50]}')
-        finally:
-            Z.pop(uid, None)
+        result = await process_msg(c, uclient, msg, uid, lt, uid, i)
+        await pt.edit(result)
+        Z.pop(uid, None)
     elif s == 'count':
-        if not m.text.isdigit():
-            await m.reply_text('Enter valid number.')
-            return
-        count = int(m.text)
-        maxlimit = PREMIUM_LIMIT if await is_premium_user(uid) else FREEMIUM_LIMIT
-        if count > maxlimit:
-            await m.reply_text(f'Maximum limit is {maxlimit}.')
-            return
-        Z[uid].update({'step': 'process', 'did': str(m.chat.id), 'num': count})
-        i, s, n, lt = Z[uid]['cid'], Z[uid]['sid'], Z[uid]['num'], Z[uid]['lt']
-        success = 0
-        pt = await m.reply_text('Processing batch...')
-        uc = await get_uclient(uid)
-        ubot = UB.get(uid)
-        if not uc or not ubot:
-            await pt.edit('Missing client setup')
-            Z.pop(uid, None)
-            return
-        if is_user_active(uid):
-            await pt.edit('Active task exists')
-            Z.pop(uid, None)
-            return
-        await add_active_batch(uid, {"total": n, "current": 0, "success": 0, "cancel_requested": False, "progress_message_id": pt.id})
         try:
-            for j in range(n):
-                if should_cancel(uid):
-                    await pt.edit(f'Cancelled at {j}/{n}. Success: {success}')
-                    break
-                await update_batch_progress(uid, j, success)
-                mid = int(s) + j
-                try:
-                    msg = await get_msg(ubot, uc, i, mid, lt)
-                    if msg:
-                        res = await process_msg(ubot, uc, msg, str(m.chat.id), lt, uid, i)
-                        print(f"Batch item {j + 1}/{n}: message={mid}, result={res}")
-                        if res.startswith(('Done', 'Copied', 'Sent')):
-                            success += 1
-                    else:
-                        print(f"Batch item {j + 1}/{n}: message={mid} not found")
-                except Exception as e:
-                    print(f"Batch item {j + 1}/{n}: message={mid} error: {e}")
-                    try: await pt.edit(f'{j+1}/{n}: Error - {str(e)[:50]}')
-                    except: pass
-                await asyncio.sleep(10)
-            if j + 1 == n:
-                await m.reply_text(f'Batch Completed ✅ Success: {success}/{n}')
-        finally:
-            await remove_active_batch(uid)
+            count = int(m.text)
+        except ValueError:
+            await m.reply_text('Please enter a valid number.')
+            return
+        if count < 1 or count > 100:
+            await m.reply_text('Batch size must be between 1 and 100.')
+            return
+        Z[uid]['count'] = count
+        Z[uid]['step'] = 'process_batch'
+        await m.reply_text('Starting batch...')
+        i, s, lt = Z[uid]['cid'], Z[uid]['sid'], Z[uid]['lt']
+        uclient = await get_uclient(uid)
+        if not uclient:
+            await m.reply_text('No authorized user session found. Use /login first.')
             Z.pop(uid, None)
+            return
+        success = 0
+        for idx in range(s, s + count):
+            if should_cancel(uid):
+                break
+            msg = await get_msg(c, uclient, i, idx, lt)
+            if not msg:
+                print(f"Batch item {idx - s + 1}/{count}: message={idx}, result=Failed to fetch message")
+                continue
+            result = await process_msg(c, uclient, msg, uid, lt, uid, i)
+            print(f"Batch item {idx - s + 1}/{count}: message={idx}, result={result}")
+            if result.startswith('Done') or result.startswith('Sent'):
+                success += 1
+        await m.reply_text(f'Batch Completed ✅ Success: {success}/{count}')
+        await remove_active_batch(uid)
+        Z.pop(uid, None)
+
