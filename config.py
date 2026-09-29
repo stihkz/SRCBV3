@@ -23,6 +23,7 @@ YTUB_COOKIES = """
 API_ID       = os.getenv("API_ID", "")
 API_HASH     = os.getenv("API_HASH", "")
 BOT_TOKEN    = os.getenv("BOT_TOKEN", "")
+BOT_NAME     = os.getenv("BOT_NAME", "Chalice")
 MONGO_DB     = os.getenv("MONGO_DB", "")
 DB_NAME      = os.getenv("DB_NAME", "telegram_downloader")
 
