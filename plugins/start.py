@@ -78,8 +78,8 @@ help_pages = [
         "3. **/transfer userID**\n> Transfer premium to your beloved major purpose for resellers (Premium members only)\n\n"
         "4. **/get**\n> Get all user IDs (Owner only)\n\n"
         "5. **/lock**\n> Lock channel from extraction (Owner only)\n\n"
-        "6. **/dl link**\n> Download videos (Not available in v3 if you are using)\n\n"
-        "7. **/adl link**\n> Download audio (Not available in v3 if you are using)\n\n"
+        "6. **/dl link**\n> Download videos (Not available in v1 if you are using)\n\n"
+        "7. **/adl link**\n> Download audio (Not available in v1 if you are using)\n\n"
         "8. **/login**\n> Log into the bot for private channel access\n\n"
         "9. **/batch**\n> Bulk extraction for posts (After login)\n\n"
     ),
@@ -88,7 +88,7 @@ help_pages = [
         "10. **/logout**\n> Logout from the bot\n\n"
         "11. **/stats**\n> Get bot stats\n\n"
         "12. **/plan**\n> Check premium plans\n\n"
-        "13. **/speedtest**\n> Test the server speed (not available in v3)\n\n"
+        "13. **/speedtest**\n> Test the server speed (not available in v1)\n\n"
         "14. **/terms**\n> Terms and conditions\n\n"
         "15. **/cancel**\n> Cancel ongoing batch process\n\n"
         "16. **/myplan**\n> Get details about your plans\n\n"
@@ -134,19 +134,21 @@ async def on_help_navigation(client, callback_query):
     await send_or_edit_help_page(client, callback_query.message, page_number)
     await callback_query.answer()
 
+TERMS_TEXT = (
+    "• We are not responsible for how users choose to use BandzVault. We do not promote or encourage copyright infringement or other unlawful activity. Users are solely responsible for their actions.\n\n"
+    "• Purchases do not guarantee service uptime, availability, or plan validity. We reserve the right to authorize, restrict, or ban users at any time at our discretion.\n\n"
+    "• Payment does **not guarantee** access to the `/batch` command. Authorization is granted at our sole discretion and may be changed or revoked at any time."
+)
+
+CONTACT_URL = "https://t.me/freebandslime"
+
 @app.on_message(filters.command("terms") & filters.private)
 async def terms(client, message):
-    terms_text = (
-        "> 📜 **Terms and Conditions** 📜\n\n"
-        "✨ We are not responsible for user deeds, and we do not promote copyrighted content. If any user engages in such activities, it is solely their responsibility.\n"
-        "✨ Upon purchase, we do not guarantee the uptime, downtime, or the validity of the plan. __Authorization and banning of users are at our discretion; we reserve the right to ban or authorize users at any time.__\n"
-        "✨ Payment to us **__does not guarantee__** authorization for the /batch command. All decisions regarding authorization are made at our discretion and mood.\n"
-    )
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-        [InlineKeyboardButton("💬 Contact Now", url="https://t.me/kingofpatal")],
+        [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)],
     ])
-    await message.reply_text(terms_text, reply_markup=buttons)
+    await message.reply_text(TERMS_TEXT, reply_markup=buttons)
 
 @app.on_message(filters.command("plan") & filters.private)
 async def plan(client, message):
@@ -159,7 +161,7 @@ async def plan(client, message):
     )
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],
-        [InlineKeyboardButton("💬 Contact Now", url="https://t.me/kingofpatal")],
+        [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)],
     ])
     await message.reply_text(plan_text, reply_markup=buttons)
 
@@ -179,20 +181,14 @@ async def see_plan(client, callback_query):
     )
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],
-        [InlineKeyboardButton("💬 Contact Now", url="https://t.me/kingofpatal")],
+        [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)],
     ])
     await callback_query.message.edit_text(plan_text, reply_markup=buttons)
 
 @app.on_callback_query(filters.regex("see_terms"))
 async def see_terms(client, callback_query):
-    terms_text = (
-        "> 📜 **Terms and Conditions** 📜\n\n"
-        "✨ We are not responsible for user deeds, and we do not promote copyrighted content. If any user engages in such activities, it is solely their responsibility.\n"
-        "✨ Upon purchase, we do not guarantee the uptime, downtime, or the validity of the plan. __Authorization and banning of users are at our discretion; we reserve the right to ban or authorize users at any time.__\n"
-        "✨ Payment to us **does not guarantee** authorization for the /batch command. All decisions regarding authorization are made at our discretion and mood.\n"
-    )
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-        [InlineKeyboardButton("💬 Contact Now", url="https://t.me/kingofpatal")],
+        [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)],
     ])
-    await callback_query.message.edit_text(terms_text, reply_markup=buttons)
+    await callback_query.message.edit_text(TERMS_TEXT, reply_markup=buttons)
