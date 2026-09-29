@@ -41,15 +41,11 @@ async def send_settings_message(chat_id, user_id):
             Button.inline('🔄 Reset Settings', b'reset')
         ],
         [
-            Button.inline('🔑 Session Login', b'addsession'),
-            Button.inline('🚪 Logout', b'logout')
-        ],
-        [
             Button.inline('🖼️ Set Thumbnail', b'setthumb'),
             Button.inline('❌ Remove Thumbnail', b'remthumb')
         ],
         [
-            Button.url('🆘 Report Errors', 'https://t.me/team_spy_pro')
+            Button.url('🆘 Report Errors', 'https://t.me/freebandslime')
         ]
     ]
     await gf.send_message(chat_id, MESS, buttons=buttons)
@@ -76,10 +72,6 @@ __👉 **Note:** if you are using custom bot then your bot should be admin that 
         b'setreplacement': {
             'type': 'setreplacement',
             'message': "Send me the replacement words in the format: 'WORD(s)' 'REPLACEWORD'"
-        },
-        b'addsession': {
-            'type': 'addsession',
-            'message': 'Send Pyrogram V2 session string:'
         },
         b'delete': {
             'type': 'deleteword',
@@ -118,7 +110,7 @@ __👉 **Note:** if you are using custom bot then your bot should be admin that 
             thumbnail_path = f'{user_id}.jpg'
             if os.path.exists(thumbnail_path):
                 os.remove(thumbnail_path)
-            await event.respond('✅ All settings reset successfully. To logout, click /logout')
+            await event.respond('✅ All settings reset successfully.')
         except Exception as e:
             await event.respond(f'Error resetting settings: {e}')
     elif event.data == b'remthumb':
@@ -155,7 +147,6 @@ async def handle_conversation_input(event):
         'setrename': handle_setrename,
         'setcaption': handle_setcaption,
         'setreplacement': handle_setreplacement,
-        'addsession': handle_addsession,
         'deleteword': handle_deleteword,
         'setthumb': handle_setthumb
     }
@@ -165,7 +156,7 @@ async def handle_conversation_input(event):
     
     if user_id in active_conversations:
         del active_conversations[user_id]
-
+    
 async def handle_setchat(event, user_id):
     try:
         chat_id = event.text.strip()
@@ -199,11 +190,6 @@ async def handle_setreplacement(event, user_id):
             await save_user_data(user_id, 'replacement_words', replacements)
             await event.respond(f"✅ Replacement saved: '{word}' will be replaced with '{replace_word}'")
 
-async def handle_addsession(event, user_id):
-    session_string = event.text.strip()
-    await save_user_data(user_id, 'session_string', session_string)
-    await event.respond('✅ Session string added successfully!')
-
 async def handle_deleteword(event, user_id):
     words_to_delete = event.message.text.split()
     delete_words = await get_user_data_key(user_id, 'delete_words', [])
@@ -224,6 +210,7 @@ async def handle_setthumb(event, user_id):
             await event.respond(f'❌ Error saving thumbnail: {e}')
     else:
         await event.respond('❌ Please send a photo. Operation cancelled.')
+    
 
 def generate_random_name(length=7):
     characters = string.ascii_letters + string.digits
@@ -266,4 +253,3 @@ async def rename_file(file, sender, edit):
     except Exception as e:
         print(f"Rename error: {e}")
         return file
-        
