@@ -34,11 +34,7 @@ async def subscribe(app, message):
         buttons = InlineKeyboardMarkup([])
         if link:
             buttons = InlineKeyboardMarkup([[InlineKeyboardButton("Join Now...", url=link)]])
-        await message.reply_photo(
-            photo="https://graph.org/file/d44f024a08ded19452152.jpg",
-            caption="Join our channel to use the bot",
-            reply_markup=buttons,
-        )
+        await message.reply_photo(photo="https://graph.org/file/d44f024a08ded19452152.jpg", caption="Join our channel to use the bot", reply_markup=buttons)
         return 1
     except Exception as ggn:
         await message.reply_text(f"Something Went Wrong. Contact admins... with following message {ggn}")
@@ -47,8 +43,7 @@ async def subscribe(app, message):
 @app.on_message(filters.command("start"))
 async def start(client, message):
     join = await subscribe(client, message)
-    if join == 1:
-        return
+    if join == 1: return
     try:
         await message.reply_photo(photo=WELCOME_IMAGE, caption=WELCOME_TEXT)
     except Exception as e:
@@ -60,35 +55,21 @@ async def set(_, message):
     if message.from_user.id not in OWNER_ID:
         await message.reply("You are not authorized to use this command.")
         return
-
     commands = [
-        BotCommand("start", "🚀 Start the bot"),
-        BotCommand("single", "📥 Download a single post"),
-        BotCommand("batch", "🫠 Extract in bulk"),
-        BotCommand("login", "🔑 Get into the bot"),
-        BotCommand("logout", "🚪 Get out of the bot"),
-        BotCommand("adl", "👻 Download audio from 30+ sites"),
-        BotCommand("dl", "💀 Download videos from 30+ sites"),
-        BotCommand("status", "⟳ Refresh Payment status"),
-        BotCommand("transfer", "💘 Gift premium to others"),
-        BotCommand("add", "➕ Add user to premium"),
-        BotCommand("rem", "➖ Remove from premium"),
-        BotCommand("rembot", "🤨 Remove your custom bot"),
-        BotCommand("settings", "⚙️ Personalize things"),
-        BotCommand("plan", "🗓️ Check our premium plans"),
-        BotCommand("terms", "🥺 Terms and conditions"),
-        BotCommand("help", "❓ If you're a noob, still!"),
-        BotCommand("cancel", "🚫 Cancel login/batch/settings process"),
-        BotCommand("stop", "🚫 Cancel batch process")
+        BotCommand("start", "🚀 Start the bot"), BotCommand("single", "📥 Download a single post"),
+        BotCommand("batch", "🫠 Extract in bulk"), BotCommand("login", "🔑 Get into the bot"),
+        BotCommand("logout", "🚪 Get out of the bot"), BotCommand("adl", "👻 Download audio from 30+ sites"),
+        BotCommand("dl", "💀 Download videos from 30+ sites"), BotCommand("status", "⟳ Refresh Payment status"),
+        BotCommand("transfer", "💘 Gift premium to others"), BotCommand("add", "➕ Add user to premium"),
+        BotCommand("rem", "➖ Remove from premium"), BotCommand("rembot", "🤨 Remove your custom bot"),
+        BotCommand("settings", "⚙️ Personalize things"), BotCommand("plan", "🗓️ Check our premium plans"),
+        BotCommand("terms", "🥺 Terms and conditions"), BotCommand("help", "❓ If you're a noob, still!"),
+        BotCommand("cancel", "🚫 Cancel login/batch/settings process"), BotCommand("stop", "🚫 Cancel batch process")
     ]
-
-    # Explicitly update Telegram's default command scope so the commands
-    # shown after typing "/" are the same for new and existing users.
     try:
         await app.delete_bot_commands(scope=BotCommandScopeDefault())
     except Exception as e:
         print(f"Could not clear existing default commands: {e}")
-
     await app.set_bot_commands(commands, scope=BotCommandScopeDefault())
     await message.reply("✅ Commands configured successfully!")
 
@@ -128,17 +109,26 @@ async def terms(client, message):
 
 @app.on_message(filters.command("plan") & filters.private)
 async def plan(client, message):
-    plan_text = "> 💰 **Premium Price**:\n\n Starting from $2 or 200 INR accepted via **__Amazon Gift Card__** (terms and conditions apply).\n📥 **Download Limit**: Users can download up to 100,000 files in a single batch command.\n🛑 **Batch**: You will get two modes /bulk and /batch.\n   - Users are advised to wait for the process to automatically cancel before proceeding with any downloads or uploads.\n\n📜 **Terms and Conditions**: For further details and complete terms and conditions, please send /terms.\n"
+    # Keep /plan consistent with the current See Plans content.
+    await send_plan_message(message)
+
+async def send_plan_message(message):
+    plan_text = "• Week — **$8**\n• Month — **$25**\n• Lifetime — **$40** *(Terms & Conditions apply)*\n\n📥 **Download Limit**\nDownload up to **100,000 files** in a single batch command.\n\n🛑 **/batch Mode**\nGet access to an extra `/batch` mode with support for files up to **4GB**.\n\n⏳ Please wait for the process to automatically cancel or finish before starting another download or upload.\n\n📜 **Terms & Conditions**\nSend `/terms` or click **See Terms 👇** for the full details."
     buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
     await message.reply_text(plan_text, reply_markup=buttons)
 
 @app.on_callback_query(filters.regex("see_plan"))
 async def see_plan(client, callback_query):
-    plan_text = "• Week — **$8**\n• Month — **$25**\n• Lifetime — **$40** *(Terms & Conditions apply)*\n\n📥 **Download Limit**\nDownload up to **100,000 files** in a single batch command.\n\n🛑 **/batch Mode**\nGet access to an extra `/batch` mode with support for files up to **4GB**.\n\n⏳ Please wait for the process to automatically cancel or finish before starting another download or upload.\n\n📜 **Terms & Conditions**\nSend `/terms` or click **See Terms 👇** for the full details."
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
-    await callback_query.message.edit_text(plan_text, reply_markup=buttons)
+    await callback_query.message.edit_text(
+        "• Week — **$8**\n• Month — **$25**\n• Lifetime — **$40** *(Terms & Conditions apply)*\n\n📥 **Download Limit**\nDownload up to **100,000 files** in a single batch command.\n\n🛑 **/batch Mode**\nGet access to an extra `/batch` mode with support for files up to **4GB**.\n\n⏳ Please wait for the process to automatically cancel or finish before starting another download or upload.\n\n📜 **Terms & Conditions**\nSend `/terms` or click **See Terms 👇** for the full details.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)])
+    )
+    await callback_query.answer()
 
 @app.on_callback_query(filters.regex("see_terms"))
 async def see_terms(client, callback_query):
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
-    await callback_query.message.edit_text(TERMS_TEXT, reply_markup=buttons)
+    await callback_query.message.edit_text(
+        TERMS_TEXT,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],[InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)])
+    )
+    await callback_query.answer()
