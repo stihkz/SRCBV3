@@ -66,7 +66,7 @@ async def _gated_process_msg(c, u, m, d, lt, uid, i):
     if not await _has_free_slot(uid):
         if FREEMIUM_LIMIT <= 0:
             return "🔒 Free downloads are disabled. Please upgrade to Premium."
-        return f"⚠️ Free daily limit reached ({FREEMIUM_LIMIT})."
+        return f"⚠️ You have reached your free daily limit ({FREEMIUM_LIMIT}).\n\n💎 DM @freebandslime to gain Premium features."
 
     result = await _ORIGINAL_PROCESS_MSG(c, u, m, d, lt, uid, i)
     if isinstance(result, str) and (result.startswith("Done") or result.startswith("Sent")):
@@ -80,16 +80,13 @@ async def _private_source_allowed(user_id: int, link: str) -> bool:
     if link_type != "private":
         return True
 
-    # Premium keeps the existing premium behavior.
     if await is_premium_user(user_id):
         return True
 
-    # A free user must have their own session from /login.
     session = await get_user_data_key(user_id, "session_string", None)
     if not session:
         return False
 
-    # Use the user's session directly. Do not use the global STRING session.
     try:
         user_client = await _ORIGINAL_GET_UCLIENT(user_id)
         if not user_client:
@@ -126,14 +123,14 @@ async def access_command_guard(client, message):
 
     if FREEMIUM_LIMIT <= 0:
         await message.reply_text(
-            "🔒 Free downloads are disabled. Please upgrade to Premium to use this feature."
+            "🔒 Free downloads are disabled. Please upgrade to Premium to use this feature.\n\n💎 DM @freebandslime to gain Premium features."
         )
         message.stop_propagation()
         return
 
     if not await _has_free_slot(uid):
         await message.reply_text(
-            f"⚠️ You have reached your free daily limit ({FREEMIUM_LIMIT})."
+            f"⚠️ You have reached your free daily limit ({FREEMIUM_LIMIT}).\n\n💎 DM @freebandslime to gain Premium features."
         )
         message.stop_propagation()
 
@@ -148,8 +145,6 @@ async def access_flow_guard(client, message):
     if not state:
         return
 
-    # When /batch asks for the number of messages, do not allow a free user to
-    # request more than the configured remaining quota.
     if state.get("step") == "count":
         try:
             count = int((message.text or "").strip())
@@ -163,8 +158,9 @@ async def access_flow_guard(client, message):
             remaining = max(0, FREEMIUM_LIMIT - await _get_usage(uid))
             if count > remaining:
                 await message.reply_text(
-                    f"⚠️ You have {remaining} free download(s) remaining today. "
-                    f"Your batch requested {count}."
+                    f"⚠️ You have {remaining} free download(s) remaining today.\n"
+                    f"Your batch requested {count}.\n\n"
+                    f"💎 DM @freebandslime to gain Premium features."
                 )
                 message.stop_propagation()
         return
