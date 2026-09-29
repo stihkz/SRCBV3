@@ -61,14 +61,23 @@ async def set(_, message):
         await message.reply("You are not authorized to use this command.")
         return
     await app.set_bot_commands([
-        BotCommand("start", "🚀 Start the bot"), BotCommand("batch", "🫠 Extract in bulk"),
-        BotCommand("login", "🔑 Get into the bot"), BotCommand("logout", "🚪 Get out of the bot"),
-        BotCommand("adl", "👻 Download audio from 30+ sites"), BotCommand("dl", "💀 Download videos from 30+ sites"),
-        BotCommand("status", "⟳ Refresh Payment status"), BotCommand("transfer", "💘 Gift premium to others"),
-        BotCommand("add", "➕ Add user to premium"), BotCommand("rem", "➖ Remove from premium"),
-        BotCommand("rembot", "🤨 Remove your custom bot"), BotCommand("settings", "⚙️ Personalize things"),
-        BotCommand("plan", "🗓️ Check our premium plans"), BotCommand("terms", "🥺 Terms and conditions"),
-        BotCommand("help", "❓ If you're a noob, still!"), BotCommand("cancel", "🚫 Cancel login/batch/settings process"),
+        BotCommand("start", "🚀 Start the bot"),
+        BotCommand("single", "📥 Download a single post"),
+        BotCommand("batch", "🫠 Extract in bulk"),
+        BotCommand("login", "🔑 Get into the bot"),
+        BotCommand("logout", "🚪 Get out of the bot"),
+        BotCommand("adl", "👻 Download audio from 30+ sites"),
+        BotCommand("dl", "💀 Download videos from 30+ sites"),
+        BotCommand("status", "⟳ Refresh Payment status"),
+        BotCommand("transfer", "💘 Gift premium to others"),
+        BotCommand("add", "➕ Add user to premium"),
+        BotCommand("rem", "➖ Remove from premium"),
+        BotCommand("rembot", "🤨 Remove your custom bot"),
+        BotCommand("settings", "⚙️ Personalize things"),
+        BotCommand("plan", "🗓️ Check our premium plans"),
+        BotCommand("terms", "🥺 Terms and conditions"),
+        BotCommand("help", "❓ If you're a noob, still!"),
+        BotCommand("cancel", "🚫 Cancel login/batch/settings process"),
         BotCommand("stop", "🚫 Cancel batch process")
     ])
     await message.reply("✅ Commands configured successfully!")
