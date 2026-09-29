@@ -21,9 +21,19 @@ Z, P, UB, UC, emp = {}, {}, {}, {}, {}
 
 ACTIVE_USERS = {}
 ACTIVE_USERS_FILE = "active_users.json"
+DOWNLOAD_DIR = "/tmp/srcbv3_downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def sanitize(filename):
     return re.sub(r'[<>:"/\\|?*\']', '_', filename).strip(" .")[:255]
+
+def local_download_path(name, fallback_ext=""):
+    name = sanitize(str(name or ""))
+    if not name:
+        name = f"{time.time_ns()}{fallback_ext}"
+    elif fallback_ext and not os.path.splitext(name)[1]:
+        name += fallback_ext
+    return os.path.join(DOWNLOAD_DIR, f"{time.time_ns()}_{name}")
 
 def load_active_users():
     try:
@@ -85,12 +95,7 @@ async def upd_dlg(c):
         return False
 
 async def _resolve_private_chat(u, i):
-    """Resolve a /c/ chat through the authorized user session.
-
-    Pyrogram can know that the account is a member of a channel while still
-    lacking a usable input peer in its local cache.  Always resolve the peer
-    with the user client before requesting the message.
-    """
+    """Resolve a /c/ chat through the authorized user session."""
     raw = str(i).strip()
     candidates = []
     if raw.startswith('-100'):
@@ -112,8 +117,6 @@ async def _resolve_private_chat(u, i):
         except Exception as e:
             last_error = e
 
-    # Refresh the dialog/peer cache and retry once. This is important after a
-    # newly generated session string is used on a fresh Heroku worker.
     await upd_dlg(u)
     for candidate in candidates:
         try:
@@ -124,9 +127,6 @@ async def _resolve_private_chat(u, i):
 
     raise last_error or ValueError(f"Could not resolve source chat {i}")
 
-# Fetch a batch message reliably using the authorized user session for private
-# chats. The message is re-fetched from that same session after peer resolution
-# so download_media() never receives a stale/bot-side Message object.
 async def get_msg(c, u, i, d, lt):
     try:
         if lt == 'public':
@@ -217,7 +217,7 @@ async def prog(c, t, C, h, m, st):
         bar = '🟢' * int(p / 10) + '🔴' * (10 - int(p / 10))
         speed = c / (time.time() - st) / (1024 * 1024) if time.time() > st else 0
         eta = time.strftime('%M:%S', time.gmtime((t - c) / (speed * 1024 * 1024))) if speed > 0 else '00:00'
-        await C.edit_message_text(h, m, f"__**Pyro Handler...**__\n\n{bar}\n\n⚡**__Completed__**: {c_mb:.2f} MB / {t_mb:.2f} MB\n📊 **__Done__**: {p:.2f}%\n🚀 **__Speed__**: {speed:.2f} MB/s\n⏳ **__ETA__**: {eta}\n\n**__Powered by Team SPY__**")
+        await C.edit_message_text(h, m, f"__**Pyro Handler...**__\n\n{bar}\n\n⚡**__Completed__**: {c_mb:.2f} MB / {t_mb:.2f} MB\n📊 **__Done__**: {p:.2f}%\n🚀 **__Speed__**: {speed:.2f} MB/s\n⏳ **__ETA__**: {eta}\n\n**__Powered by Team SPY**__")
         if p >= 100: P.pop(m, None)
 
 async def send_direct(c, m, tcid, ft=None, rtmid=None):
@@ -257,9 +257,6 @@ async def process_msg(c, u, m, d, lt, uid, i):
             else:
                 tcid = int(cfg_chat)
 
-        # For private links, force the message to come from the authorized
-        # user client immediately before downloading. This prevents
-        # PEER_ID_INVALID when a cached/stale Message object is used.
         if lt == 'private' and u:
             try:
                 chat_obj = await _resolve_private_chat(u, i)
@@ -283,54 +280,60 @@ async def process_msg(c, u, m, d, lt, uid, i):
 
             st = time.time()
             p = await c.send_message(d, 'Downloading...')
-            c_name = f"{time.time()}"
-            if m.video:
-                file_name = m.video.file_name
-                if not file_name:
-                    file_name = f"{time.time()}.mp4"
-                    c_name = sanitize(file_name)
-            elif m.audio:
-                file_name = m.audio.file_name
-                if not file_name:
-                    file_name = f"{time.time()}.mp3"
-                    c_name = sanitize(file_name)
-            elif m.document:
-                file_name = m.document.file_name
-                if not file_name:
-                    file_name = f"{time.time()}"
-                else:
-                    c_name = sanitize(file_name)
-            elif m.photo:
-                file_name = f"{time.time()}.jpg"
-                c_name = sanitize(file_name)
 
-            # Always download through the authorized user client. If it still
-            # cannot resolve the peer, surface the actual error in the batch log.
+            # Keep every temporary media file in /tmp and give it a unique,
+            # sanitized name. This avoids relative-path/filename collisions on
+            # Heroku and prevents an upload from pointing at a missing file.
+            if m.video:
+                requested_name = m.video.file_name or f"{time.time_ns()}.mp4"
+                c_name = local_download_path(requested_name, ".mp4")
+            elif m.audio:
+                requested_name = m.audio.file_name or f"{time.time_ns()}.mp3"
+                c_name = local_download_path(requested_name, ".mp3")
+            elif m.document:
+                requested_name = m.document.file_name or f"{time.time_ns()}"
+                c_name = local_download_path(requested_name)
+            elif m.photo:
+                c_name = local_download_path(f"{time.time_ns()}.jpg", ".jpg")
+            else:
+                c_name = local_download_path(f"{time.time_ns()}")
+
             try:
                 f = await u.download_media(m, file_name=c_name, progress=prog, progress_args=(c, d, p.id, st))
             except Exception as e:
                 print(f"User-session download failed for chat={i}, message={d}: {type(e).__name__}: {e}")
-                await c.edit_message_text(d, p.id, f'Download failed: {str(e)[:80]}')
-                return f'Error: {str(e)[:80]}'
+                await c.edit_message_text(d, p.id, f'Download failed: {str(e)[:120]}')
+                return f'Error: {str(e)[:120]}'
 
-            if not f:
-                await c.edit_message_text(d, p.id, 'Failed.')
+            if not f or not os.path.isfile(f):
+                print(f"Download returned missing file: {f!r}")
+                await c.edit_message_text(d, p.id, 'Download failed: file was not created.')
                 return 'Failed.'
 
             await c.edit_message_text(d, p.id, 'Renaming...')
             if ((m.video and m.video.file_name) or (m.audio and m.audio.file_name) or (m.document and m.document.file_name)):
                 f = await rename_file(f, d, p)
 
+            f = os.path.abspath(f)
+            if not os.path.isfile(f):
+                print(f"Renamed/downloaded file is missing before upload: {f!r}")
+                await c.edit_message_text(d, p.id, 'Upload failed: local file disappeared before upload.')
+                return 'Failed.'
+
             fsize = os.path.getsize(f) / (1024 * 1024 * 1024)
             th = thumbnail(d)
+            if th and not os.path.isfile(th):
+                th = None
 
             if fsize > 2 and Y:
                 st = time.time()
                 await c.edit_message_text(d, p.id, 'File is larger than 2GB. Using alternative method...')
                 await upd_dlg(Y)
                 mtd = await get_video_metadata(f)
-                dur, h, w = mtd['duration'], mtd['width'], mtd['height']
+                dur, h, w = mtd['duration'], mtd['height'], mtd['width']
                 th = await screenshot(f, dur, d)
+                if th and not os.path.isfile(th):
+                    th = None
                 send_funcs = {'video': Y.send_video, 'video_note': Y.send_video_note, 'voice': Y.send_voice, 'audio': Y.send_audio, 'photo': Y.send_photo, 'document': Y.send_document}
                 for mtype, func in send_funcs.items():
                     if f.endswith('.mp4'): mtype = 'video'
@@ -338,9 +341,9 @@ async def process_msg(c, u, m, d, lt, uid, i):
                         sent = await func(LOG_GROUP, f, thumb=th if mtype == 'video' else None, duration=dur if mtype == 'video' else None, height=h if mtype == 'video' else None, width=w if mtype == 'video' else None, caption=ft if m.caption and mtype not in ['video_note', 'voice'] else None, reply_to_message_id=rtmid, progress=prog, progress_args=(c, d, p.id, st))
                         break
                 else:
-                    sent = await Y.send_document(LOG_GROUP, f, thumb=th, caption=ft if m.caption else None, reply_to_message_id=rtmid, progress=prog, progress_args=(c, d, p.id, st))
+                    sent = await Y.send_document(LOG_GROUP, f, thumb=th if th and os.path.isfile(th) else None, caption=ft if m.caption else None, reply_to_message_id=rtmid, progress=prog, progress_args=(c, d, p.id, st))
                 await c.copy_message(d, LOG_GROUP, sent.id)
-                os.remove(f)
+                if os.path.exists(f): os.remove(f)
                 await c.delete_messages(d, p.id)
                 return 'Done (Large file).'
 
@@ -354,6 +357,8 @@ async def process_msg(c, u, m, d, lt, uid, i):
                     mtd = await get_video_metadata(f)
                     dur, h, w = mtd['duration'], mtd['height'], mtd['width']
                     th = await screenshot(f, dur, d)
+                    if th and not os.path.isfile(th):
+                        th = None
                     await c.send_video(tcid, video=f, caption=ft if m.caption else None, thumb=th, width=w, height=h, duration=dur, progress=prog, progress_args=(c, d, p.id, st), reply_to_message_id=rtmid)
                 elif m.video_note:
                     await c.send_video_note(tcid, video_note=f, progress=prog, progress_args=(c, d, p.id, st), reply_to_message_id=rtmid)
@@ -362,7 +367,7 @@ async def process_msg(c, u, m, d, lt, uid, i):
                 elif m.sticker:
                     await c.send_sticker(tcid, m.sticker.file_id, reply_to_message_id=rtmid)
                 elif m.audio or (m.document and file_ext in audio_extensions):
-                    await c.send_audio(tcid, audio=f, caption=ft if m.caption else None, thumb=th, progress=prog, progress_args=(c, d, p.id, st), reply_to_message_id=rtmid)
+                    await c.send_audio(tcid, audio=f, caption=ft if m.caption else None, thumb=th if th and os.path.isfile(th) else None, progress=prog, progress_args=(c, d, p.id, st), reply_to_message_id=rtmid)
                 elif m.photo:
                     await c.send_photo(tcid, photo=f, caption=ft if m.caption else None, progress=prog, progress_args=(c, d, p.id, st), reply_to_message_id=rtmid)
                 elif m.document:
@@ -370,16 +375,18 @@ async def process_msg(c, u, m, d, lt, uid, i):
                 else:
                     await c.send_document(tcid, document=f, caption=ft if m.caption else None, progress=prog, progress_args=(c, d, p.id, st), reply_to_message_id=rtmid)
             except Exception as e:
-                await c.edit_message_text(d, p.id, f'Upload failed: {str(e)[:30]}')
+                print(f"Upload failed for file={f!r}, exists={os.path.isfile(f)}, thumb={th!r}, thumb_exists={bool(th and os.path.isfile(th))}: {type(e).__name__}: {e}")
+                await c.edit_message_text(d, p.id, f'Upload failed: {str(e)[:80]}')
                 if os.path.exists(f): os.remove(f)
                 return 'Failed.'
-            os.remove(f)
+            if os.path.exists(f): os.remove(f)
             await c.delete_messages(d, p.id)
             return 'Done.'
         elif m.text:
             await c.send_message(tcid, text=m.text.markdown, reply_to_message_id=rtmid)
             return 'Sent.'
     except Exception as e:
+        print(f"process_msg error: {type(e).__name__}: {e}")
         return f'Error: {str(e)[:80]}'
 
 @X.on_message(filters.command(['batch', 'single']))
@@ -487,4 +494,3 @@ async def text_handler(c, m):
         await m.reply_text(f'Batch Completed ✅ Success: {success}/{count}')
         await remove_active_batch(uid)
         Z.pop(uid, None)
-
