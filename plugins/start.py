@@ -5,7 +5,7 @@
 from shared_client import app
 from pyrogram import filters
 from pyrogram.errors import UserNotParticipant
-from pyrogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import BotCommand, BotCommandScopeDefault, InlineKeyboardButton, InlineKeyboardMarkup
 from config import LOG_GROUP, OWNER_ID, FORCE_SUB
 
 WELCOME_TEXT = """👋 **Welcome to BandzVault!**
@@ -60,7 +60,8 @@ async def set(_, message):
     if message.from_user.id not in OWNER_ID:
         await message.reply("You are not authorized to use this command.")
         return
-    await app.set_bot_commands([
+
+    commands = [
         BotCommand("start", "🚀 Start the bot"),
         BotCommand("single", "📥 Download a single post"),
         BotCommand("batch", "🫠 Extract in bulk"),
@@ -79,12 +80,21 @@ async def set(_, message):
         BotCommand("help", "❓ If you're a noob, still!"),
         BotCommand("cancel", "🚫 Cancel login/batch/settings process"),
         BotCommand("stop", "🚫 Cancel batch process")
-    ])
+    ]
+
+    # Explicitly update Telegram's default command scope so the commands
+    # shown after typing "/" are the same for new and existing users.
+    try:
+        await app.delete_bot_commands(scope=BotCommandScopeDefault())
+    except Exception as e:
+        print(f"Could not clear existing default commands: {e}")
+
+    await app.set_bot_commands(commands, scope=BotCommandScopeDefault())
     await message.reply("✅ Commands configured successfully!")
 
 help_pages = [
-    ("📝 **Bot Commands Overview (1/2):**\n\n1. **/add userID**\n> Add user to premium (Owner only)\n\n2. **/rem userID**\n> Remove user from premium (Owner only)\n\n3. **/transfer userID**\n> Transfer premium to your beloved major purpose for resellers (Premium members only)\n\n4. **/get**\n> Get all user IDs (Owner only)\n\n5. **/lock**\n> Lock channel from extraction (Owner only)\n\n6. **/dl link**\n> Download videos (Not available in v1 if you are using)\n\n7. **/adl link**\n> Download audio (Not available in v1 if you are using)\n\n8. **/login**\n> Log into the bot for private channel access\n\n9. **/batch**\n> Bulk extraction for posts (After login)\n\n"),
-    ("📝 **Bot Commands Overview (2/2):**\n\n10. **/logout**\n> Logout from the bot\n\n11. **/stats**\n> Get bot stats\n\n12. **/plan**\n> Check premium plans\n\n13. **/speedtest**\n> Test the server speed (not available in v1)\n\n14. **/terms**\n> Terms and conditions\n\n15. **/cancel**\n> Cancel ongoing batch process\n\n16. **/myplan**\n> Get details about your plans\n\n17. **/session**\n> Generate Pyrogram V2 session\n\n18. **/settings**\n> 1. SETCHATID : To directly upload in channel or group or user's dm use it with -100[chatID]\n> 2. SETRENAME : To add custom rename tag or username of your channels\n> 3. CAPTION : To add custom caption\n> 4. REPLACEWORDS : Can be used for words in deleted set via REMOVE WORDS\n> 5. RESET : To set the things back to default\n\n> You can set CUSTOM THUMBNAIL, PDF WATERMARK, VIDEO WATERMARK, SESSION-based login, etc. from settings\n\n**__Powered by Chalice__**")
+    ("📝 **Bot Commands Overview (1/2):**\n\n1. **/add userID**\n> Add user to premium (Owner only)\n\n2. **/rem userID**\n> Remove user from premium (Owner only)\n\n3. **/transfer userID**\n> Transfer premium to your beloved major purpose for resellers (Premium members only)\n\n4. **/get**\n> Get all user IDs (Owner only)\n\n5. **/lock**\n> Lock channel from extraction (Owner only)\n\n6. **/single link**\n> Download a single post\n\n7. **/dl link**\n> Download videos (Not available in v1 if you are using)\n\n8. **/adl link**\n> Download audio (Not available in v1 if you are using)\n\n9. **/login**\n> Log into the bot for private channel access\n\n10. **/batch**\n> Bulk extraction for posts (After login)\n\n"),
+    ("📝 **Bot Commands Overview (2/2):**\n\n11. **/logout**\n> Logout from the bot\n\n12. **/stats**\n> Get bot stats\n\n13. **/plan**\n> Check premium plans\n\n14. **/speedtest**\n> Test the server speed (not available in v1)\n\n15. **/terms**\n> Terms and conditions\n\n16. **/cancel**\n> Cancel ongoing batch process\n\n17. **/myplan**\n> Get details about your plans\n\n18. **/session**\n> Generate Pyrogram V2 session\n\n19. **/settings**\n> 1. SETCHATID : To directly upload in channel or group or user's dm use it with -100[chatID]\n> 2. SETRENAME : To add custom rename tag or username of your channels\n> 3. CAPTION : To add custom caption\n> 4. REPLACEWORDS : Can be used for words in deleted set via REMOVE WORDS\n> 5. RESET : To set the things back to default\n\n> You can set CUSTOM THUMBNAIL, PDF WATERMARK, VIDEO WATERMARK, etc. from settings\n\n**__Powered by Chalice__**")
 ]
 
 async def send_or_edit_help_page(_, message, page_number):
