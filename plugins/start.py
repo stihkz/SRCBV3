@@ -45,7 +45,6 @@ async def start(client, message):
             caption=WELCOME_TEXT
         )
     except Exception as e:
-        # Fall back to text if Telegram cannot fetch the Google Drive image.
         print(f"Start image failed: {e}")
         await message.reply_text(WELCOME_TEXT)
 
@@ -54,12 +53,11 @@ async def set(_, message):
     if message.from_user.id not in OWNER_ID:
         await message.reply("You are not authorized to use this command.")
         return
-     
+    
     await app.set_bot_commands([
         BotCommand("start", "🚀 Start the bot"),
         BotCommand("batch", "🫠 Extract in bulk"),
         BotCommand("login", "🔑 Get into the bot"),
-        BotCommand("setbot", "🧸 Add your bot for handling files"),
         BotCommand("logout", "🚪 Get out of the bot"),
         BotCommand("adl", "👻 Download audio from 30+ sites"),
         BotCommand("dl", "💀 Download videos from 30+ sites"),
@@ -256,4 +254,3 @@ async def see_terms(client, callback_query):
         ]
     )
     await callback_query.message.edit_text(terms_text, reply_markup=buttons)
-     
