@@ -2,10 +2,7 @@
 # Licensed under the GNU General Public License v3.0.
 
 import asyncio
-from pyrogram import filters
-from pyrogram.handlers import MessageHandler
-from pyrogram.errors import MessageIdInvalid
-from pyrogram import StopPropagation
+from pyrogram import filters, StopPropagation
 from shared_client import app as X
 
 
@@ -34,12 +31,12 @@ async def cancel_single_or_waiting(c, m):
     uid = m.from_user.id
     batch = _get_batch_module()
 
-    # If /single is waiting for the link, cancel its conversation state.
+    # /single waiting for a link, or currently processing one.
     if uid in batch.Z and batch.Z[uid].get("step") in ("start_single", "process_single"):
         batch.Z.pop(uid, None)
 
-        # If the single download is already running, cancel the handler task
-        # that is awaiting process_msg(). This also interrupts download_media().
+        # The single handler awaits process_msg(), so cancelling that task
+        # interrupts the active download as well.
         cancelled = False
         for task in asyncio.all_tasks():
             if task is asyncio.current_task() or task.done():
@@ -52,5 +49,5 @@ async def cancel_single_or_waiting(c, m):
         await m.reply_text("🛑 Single download cancelled." if cancelled else "🛑 Single process cancelled.")
         raise StopPropagation
 
-    # Let the existing batch cancellation handler handle real batch jobs.
-    raise StopPropagation
+    # No single task: let the existing /cancel /stop batch handler run.
+    return
