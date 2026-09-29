@@ -88,6 +88,15 @@ async def load_and_run_plugins():
     # loading/running the rest of the plugin set, not after the plugin loop.
     install_batch_compat()
 
+    # Explicitly import the owner ban plugin before the generic plugin scan.
+    # This guarantees the handlers are registered even if filesystem ordering
+    # changes on Heroku.
+    try:
+        importlib.import_module("plugins.ban")
+        print("Chalice ban plugin explicitly loaded.")
+    except Exception as e:
+        print(f"ERROR loading Chalice ban plugin: {e}")
+
     plugin_dir = "plugins"
     plugins = [f[:-3] for f in os.listdir(plugin_dir) if f.endswith(".py") and f != "__init__.py"]
 
