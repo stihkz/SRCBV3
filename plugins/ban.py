@@ -1,7 +1,6 @@
 # Copyright (c) 2025 devgagan.
 # Licensed under the GNU General Public License v3.0.
 
-import re
 from pyrogram import filters, StopPropagation
 from shared_client import app
 from config import OWNER_ID
@@ -10,11 +9,7 @@ from utils.func import users_collection
 
 def is_owner(user_id):
     try:
-        if isinstance(OWNER_ID, (list, tuple, set)):
-            values = OWNER_ID
-        else:
-            values = str(OWNER_ID).replace(",", " ").split()
-        return int(user_id) in {int(x) for x in values}
+        return int(user_id) in {int(x) for x in OWNER_ID}
     except Exception as e:
         print(f"Ban owner check failed: {e}")
         return False
@@ -44,110 +39,82 @@ async def get_banned(user_id):
     return await users_collection.find_one({"user_id": int(user_id), "bot_banned": True})
 
 
-# Use an explicit regex as well as Pyrogram's command filter. This accepts
-# /ban, /ban@BotUsername and whitespace-separated arguments reliably.
-BAN_COMMAND = filters.regex(r"^/ban(?:@\w+)?(?:\s|$)")
-UNBAN_COMMAND = filters.regex(r"^/unban(?:@\w+)?(?:\s|$)")
-BANNED_COMMAND = filters.regex(r"^/banned(?:@\w+)?(?:\s|$)")
-
-
+# Keep the ban enforcement very early so banned users cannot use another command.
 @app.on_message(filters.all, group=-100)
 async def enforce_bot_ban(client, message):
-    if not message.from_user:
+    if not message.from_user or is_owner(message.from_user.id):
         return
 
-    user_id = message.from_user.id
-    if is_owner(user_id):
-        return
-
-    if await get_banned(user_id):
+    if await get_banned(message.from_user.id):
         try:
             await message.reply_text("🚫 **You are banned from using this bot.**")
         except Exception as e:
-            print(f"Could not send ban message to {user_id}: {e}")
+            print(f"Could not send ban message: {e}")
         raise StopPropagation
 
 
-@app.on_message(BAN_COMMAND, group=0)
+# Use Pyrogram's native command filter rather than regex so Telegram command
+# entities and /command@bot syntax are handled by Pyrogram itself.
+@app.on_message(filters.command("ban"), group=1)
 async def ban_user(client, message):
-    print(f"BAN COMMAND RECEIVED: user_id={message.from_user.id if message.from_user else None}, text={message.text!r}")
+    print(f"BAN COMMAND RECEIVED: {message.text!r} from {message.from_user.id if message.from_user else None}")
 
     if not message.from_user:
         return
-
     if not is_owner(message.from_user.id):
         await message.reply_text("❌ You are not authorized to use this command.")
         return
 
-    parts = message.text.split(maxsplit=1) if message.text else []
-    argument = parts[1].strip() if len(parts) > 1 else None
+    argument = message.command[1] if len(message.command) > 1 else None
     target = await get_target_user(client, message, argument)
-
     if not target:
-        await message.reply_text(
-            "Usage: `/ban @username` or `/ban user_id`\n\n"
-            "You can also reply to a user's message with `/ban`."
-        )
+        await message.reply_text("Usage: `/ban @username` or `/ban user_id`\n\nYou can also reply to a user's message with `/ban`.")
         return
-
     if is_owner(target.id):
         await message.reply_text("❌ You cannot ban an owner.")
         return
 
     await users_collection.update_one(
         {"user_id": target.id},
-        {"$set": {
-            "user_id": target.id,
-            "bot_banned": True,
-            "ban_username": target.username
-        }},
+        {"$set": {"user_id": target.id, "bot_banned": True, "ban_username": target.username}},
         upsert=True,
     )
-
     name = f"@{target.username}" if target.username else (target.first_name or str(target.id))
     await message.reply_text(f"🚫 **{name} has been banned from using the bot.**\nID: `{target.id}`")
 
 
-@app.on_message(UNBAN_COMMAND, group=0)
+@app.on_message(filters.command("unban"), group=1)
 async def unban_user(client, message):
-    print(f"UNBAN COMMAND RECEIVED: user_id={message.from_user.id if message.from_user else None}, text={message.text!r}")
+    print(f"UNBAN COMMAND RECEIVED: {message.text!r} from {message.from_user.id if message.from_user else None}")
 
     if not message.from_user:
         return
-
     if not is_owner(message.from_user.id):
         await message.reply_text("❌ You are not authorized to use this command.")
         return
 
-    parts = message.text.split(maxsplit=1) if message.text else []
-    argument = parts[1].strip() if len(parts) > 1 else None
+    argument = message.command[1] if len(message.command) > 1 else None
     target = await get_target_user(client, message, argument)
-
     if not target:
-        await message.reply_text(
-            "Usage: `/unban @username` or `/unban user_id`\n\n"
-            "You can also reply to a user's message with `/unban`."
-        )
+        await message.reply_text("Usage: `/unban @username` or `/unban user_id`\n\nYou can also reply to a user's message with `/unban`.")
         return
 
     result = await users_collection.update_one(
         {"user_id": target.id},
-        {"$unset": {"bot_banned": "", "ban_username": ""}}
+        {"$unset": {"bot_banned": "", "ban_username": ""}},
+    )
+    await message.reply_text(
+        f"✅ User `{target.id}` has been unbanned." if result.modified_count
+        else "ℹ️ That user is not currently banned."
     )
 
-    if result.modified_count:
-        await message.reply_text(f"✅ User `{target.id}` has been unbanned.")
-    else:
-        await message.reply_text("ℹ️ That user is not currently banned.")
 
-
-@app.on_message(BANNED_COMMAND, group=0)
+@app.on_message(filters.command("banned"), group=1)
 async def list_banned(client, message):
-    print(f"BANNED COMMAND RECEIVED: user_id={message.from_user.id if message.from_user else None}")
+    print(f"BANNED COMMAND RECEIVED from {message.from_user.id if message.from_user else None}")
 
     if not message.from_user:
         return
-
     if not is_owner(message.from_user.id):
         await message.reply_text("❌ You are not authorized to use this command.")
         return
@@ -160,8 +127,8 @@ async def list_banned(client, message):
 
     if not users:
         await message.reply_text("✅ No users are currently banned.")
-        return
+    else:
+        await message.reply_text("🚫 **Banned users:**\n\n" + "\n".join(f"• {u}" for u in users))
 
-    await message.reply_text("🚫 **Banned users:**\n\n" + "\n".join(f"• {u}" for u in users))
 
 print("Chalice ban plugin loaded.")
