@@ -4,7 +4,6 @@
 
 import os, re, time, asyncio, json
 from pyrogram import Client, filters
-from pyrogram.types import Message
 from pyrogram.errors import UserNotParticipant
 from config import API_ID, API_HASH, LOG_GROUP, STRING, FORCE_SUB, FREEMIUM_LIMIT, PREMIUM_LIMIT
 from utils.func import get_user_data, screenshot, thumbnail, get_video_metadata
@@ -173,8 +172,10 @@ async def get_msg(c, u, i, d, lt):
         return None
 
 async def get_ubot(uid):
+    """Use the main bot for sending when the user has no custom bot configured."""
     bt = await get_user_data_key(uid, "bot_token", None)
-    if not bt: return None
+    if not bt:
+        return X
     if uid in UB: return UB.get(uid)
     try:
         bot = Client(f"user_{uid}", bot_token=bt, api_id=API_ID, api_hash=API_HASH)
@@ -182,28 +183,8 @@ async def get_ubot(uid):
         UB[uid] = bot
         return bot
     except Exception as e:
-        print(f"Error starting bot for user {uid}: {e}")
-        return None
-
-async def get_uclient(uid):
-    ud = await get_user_data(uid)
-    ubot = UB.get(uid)
-    cl = UC.get(uid)
-    if cl: return cl
-    if not ud: return ubot if ubot else None
-    xxx = ud.get('session_string')
-    if xxx:
-        try:
-            ss = dcs(xxx)
-            gg = Client(f'{uid}_client', api_id=API_ID, api_hash=API_HASH, device_model="v3saver", session_string=ss)
-            await gg.start()
-            await upd_dlg(gg)
-            UC[uid] = gg
-            return gg
-        except Exception as e:
-            print(f'User client error: {e}')
-            return ubot if ubot else Y
-    return Y
+        print(f"Error starting bot for user {uid}: {e}; falling back to main bot")
+        return X
 
 async def prog(c, t, C, h, m, st):
     global P
@@ -281,9 +262,6 @@ async def process_msg(c, u, m, d, lt, uid, i):
             st = time.time()
             p = await c.send_message(d, 'Downloading...')
 
-            # Keep every temporary media file in /tmp and give it a unique,
-            # sanitized name. This avoids relative-path/filename collisions on
-            # Heroku and prevents an upload from pointing at a missing file.
             if m.video:
                 requested_name = m.video.file_name or f"{time.time_ns()}.mp4"
                 c_name = local_download_path(requested_name, ".mp4")
@@ -403,10 +381,10 @@ async def process_cmd(c, m):
         return
     ubot = await get_ubot(uid)
     if not ubot:
-        await pro.edit('Add your bot with /setbot first')
+        await pro.edit('Unable to start the bot client. Please try again later.')
         return
     Z[uid] = {'step': 'start' if cmd == 'batch' else 'start_single'}
-    await pro.edit(f'Send {"start link..." if cmd == "batch" else "link you to process"}.')
+    await pro.edit(f'Send {"the start link..." if cmd == "batch" else "the link you want to process..."}.')
 
 @X.on_message(filters.command(['cancel', 'stop']))
 async def cancel_cmd(c, m):
@@ -426,7 +404,7 @@ async def text_handler(c, m):
     s = Z[uid].get('step')
     x = await get_ubot(uid)
     if not x:
-        await m.reply("Add your bot /setbot `token`")
+        await m.reply("Unable to start the bot client. Please try again later.")
         return
     if s == 'start':
         L = m.text
@@ -447,11 +425,7 @@ async def text_handler(c, m):
         Z[uid].update({'step': 'process_single', 'cid': i, 'sid': d, 'lt': lt})
         i, s, lt = Z[uid]['cid'], Z[uid]['sid'], Z[uid]['lt']
         pt = await m.reply_text('Processing...')
-        ubot = UB.get(uid)
-        if not ubot:
-            await pt.edit('Add bot with /setbot first')
-            Z.pop(uid, None)
-            return
+        ubot = UB.get(uid) or X
         uclient = await get_uclient(uid)
         msg = await get_msg(c, uclient, i, s, lt)
         if not msg:
