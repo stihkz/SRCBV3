@@ -3,10 +3,11 @@
 # See LICENSE file in the repository root for full license text.
 
 import asyncio
-from shared_client import start_client
 import importlib
 import os
 import sys
+from shared_client import start_client
+
 
 async def _compat_get_uclient(uid):
     """Return a logged-in user client when available, otherwise a usable bot client."""
@@ -53,7 +54,6 @@ async def _compat_get_uclient(uid):
 
 
 class _ChaliceProgressClient:
-    """Proxy the progress message edit so old Team SPY branding is replaced."""
     def __init__(self, client):
         self._client = client
 
@@ -63,7 +63,6 @@ class _ChaliceProgressClient:
 
 
 def install_batch_compat():
-    """Install compatibility helpers before any plugin startup code can use them."""
     try:
         batch = importlib.import_module("plugins.batch")
         if not hasattr(batch, "get_uclient"):
@@ -82,28 +81,42 @@ def install_batch_compat():
 
 
 async def load_and_run_plugins():
-    await start_client()
+    # Register every handler BEFORE connecting either Telegram client.  This
+    # prevents the Telethon command handlers (/add, /rem, /status, /dl, /adl,
+    # etc.) from being registered after the update loop has already started.
+    plugin_dir = "plugins"
+    plugins = [
+        f[:-3]
+        for f in os.listdir(plugin_dir)
+        if f.endswith(".py") and f != "__init__.py"
+    ]
 
-    # batch.py expects get_uclient() in some command paths. Install it before
-    # loading/running the rest of the plugin set, not after the plugin loop.
+    # batch compatibility must exist before access_control is imported.
     install_batch_compat()
 
-    # Explicitly import the owner ban plugin before the generic plugin scan.
-    # This guarantees the handlers are registered even if filesystem ordering
-    # changes on Heroku.
-    try:
-        importlib.import_module("plugins.ban")
-        print("Chalice ban plugin explicitly loaded.")
-    except Exception as e:
-        print(f"ERROR loading Chalice ban plugin: {e}")
+    # Keep batch first, then the remaining plugins in a deterministic order.
+    ordered = []
+    if "batch" in plugins:
+        ordered.append("batch")
+    for plugin in sorted(plugins):
+        if plugin != "batch":
+            ordered.append(plugin)
 
-    plugin_dir = "plugins"
-    plugins = [f[:-3] for f in os.listdir(plugin_dir) if f.endswith(".py") and f != "__init__.py"]
+    loaded = []
+    for plugin in ordered:
+        try:
+            module = importlib.import_module(f"plugins.{plugin}")
+            loaded.append((plugin, module))
+            print(f"Loaded plugin module: {plugin}")
+        except Exception as e:
+            print(f"ERROR loading plugin {plugin}: {e}")
+            raise
 
-    for plugin in plugins:
-        module = importlib.import_module(f"plugins.{plugin}")
+    # Now that all decorators have registered their handlers, connect the
+    # Telethon and Pyrogram clients. No command handler is missed during startup.
+    await start_client()
 
-        # Keep the compatibility guard in case a plugin reload/replaces batch.
+    for plugin, module in loaded:
         if plugin == "batch":
             if not hasattr(module, "get_uclient"):
                 module.get_uclient = _compat_get_uclient
@@ -111,9 +124,10 @@ async def load_and_run_plugins():
             if not getattr(module, "_chalice_prog_patched", False):
                 install_batch_compat()
 
-        if hasattr(module, f"run_{plugin}_plugin"):
+        hook = getattr(module, f"run_{plugin}_plugin", None)
+        if hook:
             print(f"Running {plugin} plugin...")
-            await getattr(module, f"run_{plugin}_plugin")()
+            await hook()
 
 
 async def main():
