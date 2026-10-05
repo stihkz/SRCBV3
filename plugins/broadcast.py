@@ -14,7 +14,7 @@ from utils.func import users_collection
 def is_broadcast_admin(user_id):
     try:
         allowed = {int(x) for x in getattr(config, "OWNER_ID", [])}
-        allowed.update(int(x) for x in getattr(config, "ADMIN_ID", [])}
+        allowed.update(int(x) for x in getattr(config, "ADMIN_ID", []))
         return int(user_id) in allowed
     except Exception as e:
         print(f"Broadcast admin check failed: {e}")
