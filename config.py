@@ -28,7 +28,7 @@ MONGO_DB     = os.getenv("MONGO_DB", "")
 DB_NAME      = os.getenv("DB_NAME", "telegram_downloader")
 
 # ─── OWNER / CONTROL SETTINGS ───────────────────────────────────────────────────
-OWNER_ID     = list(map(int, os.getenv("OWNER_ID", "").split()))  # space-separated list
+OWNER_ID     = list(map(int, os.getenv("OWNER_ID", "").split()))  # space-separated listnADMIN_ID     = list(map(int, os.getenv("ADMIN_ID", "").split()))  # optional space-separated admin IDs
 STRING       = os.getenv("STRING", None)  # optional session string
 LOG_GROUP    = int(os.getenv("LOG_GROUP", "-1001234456"))
 FORCE_SUB    = int(os.getenv("FORCE_SUB", "-10012345567"))
@@ -41,7 +41,7 @@ IV_KEY       = os.getenv("IV_KEY", "s7Yx5CpVmE3F")  # decryption key
 YT_COOKIES   = os.getenv("YT_COOKIES", YTUB_COOKIES)
 INSTA_COOKIES = os.getenv("INSTA_COOKIES", INST_COOKIES)
 
-# ─── USAGE LIMITS ───────────────────────────────────────────────────────────────
+# ─── USAGE LIMITS ─────────────────────────────────────────────────────────────────
 FREEMIUM_LIMIT = int(os.getenv("FREEMIUM_LIMIT", "0"))
 PREMIUM_LIMIT  = int(os.getenv("PREMIUM_LIMIT", "500"))
 
