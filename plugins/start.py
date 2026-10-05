@@ -131,4 +131,5 @@ async def see_terms(client, callback_query):
     await callback_query.message.edit_text(
         TERMS_TEXT,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 See Plans", callback_data="see_plan")], [InlineKeyboardButton("💬 Contact Now", url=CONTACT_URL)]])
+    )
     await callback_query.answer()
