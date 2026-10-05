@@ -45,7 +45,7 @@ async def send_broadcast(client, target_id, source_message=None, text=None):
             return False
 
 
-@app.on_message(filters.command("broadcast") & filters.private)
+@app.on_message(filters.command("broadcast"), group=-10)
 async def broadcast(client, message):
     if not message.from_user:
         return
@@ -67,12 +67,18 @@ async def broadcast(client, message):
 
     status = await message.reply_text("📢 Starting broadcast...")
 
-    cursor = users_collection.find({"bot_banned": {"$ne": True}}, {"user_id": 1})
+    try:
+        cursor = users_collection.find({"bot_banned": {"$ne": True}}, {"user_id": 1})
+    except Exception as e:
+        await status.edit_text(f"❌ Could not access the user database.\\n\\n`{e}`")
+        return
+
     sent = 0
     failed = 0
     total = 0
 
-    async for user in cursor:
+    try:
+        async for user in cursor:
         user_id = user.get("user_id")
         if not user_id:
             continue
@@ -81,7 +87,10 @@ async def broadcast(client, message):
             sent += 1
         else:
             failed += 1
-        await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)
+    except Exception as e:
+        await status.edit_text(f"❌ Broadcast failed while reading users.\\n\\n`{e}`")
+        return
 
     try:
         await status.edit_text(
